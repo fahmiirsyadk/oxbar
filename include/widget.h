@@ -8,6 +8,10 @@ typedef struct Widget {
     char *icon;
     char *label;
     char *click_cmd;
+    char *scroll_up;
+    char *scroll_down;
+    char *fg;
+    char *bg;
     double interval;
     WidgetUpdate update;
     void *ctx;

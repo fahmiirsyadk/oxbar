@@ -41,5 +41,6 @@ Bar *bar_create(Display *dpy, int screen, ConfigBlock *cfg);
 void bar_destroy(Bar *bar);
 void bar_render(Bar *bar);
 void bar_click(Bar *bar, int x);
+void bar_scroll(Bar *bar, int x, int button);
 
 #endif

@@ -1,4 +1,5 @@
 # oxbar - single bar example
+# kill -HUP $(pidof oxbar) to reload config
 
 bar main {
     position top
@@ -34,17 +35,23 @@ bar main {
         interval 2
         cmd "pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | grep -oP '\\d+%' | head -1 || echo '??%'"
         click "pavucontrol"
+        scroll_up "amixer set Master 5%+"
+        scroll_down "amixer set Master 5%-"
     }
     widget sep    {}
     widget bright {
         icon LIT
         interval 5
         cmd "paste /sys/class/backlight/*/brightness /sys/class/backlight/*/max_brightness 2>/dev/null | awk '{printf \"%d%%\",$1*100/$2}' || echo '??%'"
+        scroll_up "brightnessctl set +5%"
+        scroll_down "brightnessctl set 5%-"
+        fg #ffff00
     }
     widget sep    {}
     widget bat {
         icon BAT
         interval 30
+        fg #00ff00
         cmd "if [ -f /sys/class/power_supply/BAT0/capacity ]; then printf '%d%%' $(cat /sys/class/power_supply/BAT0/capacity); else echo AC; fi"
     }
     widget sep    {}

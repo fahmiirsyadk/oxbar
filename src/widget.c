@@ -56,6 +56,10 @@ void widget_destroy(Widget *widget)
     free(widget->icon);
     free(widget->label);
     free(widget->click_cmd);
+    free(widget->scroll_up);
+    free(widget->scroll_down);
+    free(widget->fg);
+    free(widget->bg);
     free(widget);
 }
 

@@ -146,6 +146,22 @@ Bar *bar_create(Display *dpy, int screen, ConfigBlock *cfg)
         if (click != NULL)
             widget->click_cmd = strdup(click);
 
+        const char *scroll_up = config_get(child, "scroll_up");
+        if (scroll_up != NULL)
+            widget->scroll_up = strdup(scroll_up);
+
+        const char *scroll_down = config_get(child, "scroll_down");
+        if (scroll_down != NULL)
+            widget->scroll_down = strdup(scroll_down);
+
+        const char *wfg = config_get(child, "fg");
+        if (wfg != NULL)
+            widget->fg = strdup(wfg);
+
+        const char *wbg = config_get(child, "bg");
+        if (wbg != NULL)
+            widget->bg = strdup(wbg);
+
         widget_update(widget);
         bar->widgets[bar->widget_count++] = widget;
     }
@@ -251,6 +267,15 @@ void bar_destroy(Bar *bar)
     free(bar);
 }
 
+static unsigned long parse_color(Display *dpy, int screen, const char *hex)
+{
+    XftColor c;
+    if (XftColorAllocName(dpy, DefaultVisual(dpy, screen),
+            DefaultColormap(dpy, screen), hex, &c))
+        return c.pixel;
+    return strtoul(hex + 1, NULL, 16);
+}
+
 void bar_render(Bar *bar)
 {
     unsigned long bg_pixel = strtoul(bar->bg + 1, NULL, 16);
@@ -297,9 +322,30 @@ void bar_render(Bar *bar)
         widget->x = x;
         widget->w = ext.xOff;
 
-        if (fg_ok)
+        if (widget->bg != NULL) {
+            unsigned long wbg = parse_color(bar->dpy, bar->screen, widget->bg);
+            XSetForeground(bar->dpy, bar->gc, wbg);
+            XFillRectangle(bar->dpy, bar->buf, bar->gc,
+                x - bar->padding / 2, 0, ext.xOff + bar->padding, bar->height);
+        }
+
+        XftColor wfg;
+        Bool wfg_ok = False;
+        if (widget->fg != NULL) {
+            wfg_ok = XftColorAllocName(bar->dpy, DefaultVisual(bar->dpy, bar->screen),
+                DefaultColormap(bar->dpy, bar->screen), widget->fg, &wfg);
+        }
+
+        if (wfg_ok)
+            XftDrawStringUtf8(bar->draw, &wfg, bar->font,
+                x, y, (const unsigned char *)label, strlen(label));
+        else if (fg_ok)
             XftDrawStringUtf8(bar->draw, &fg_color, bar->font,
                 x, y, (const unsigned char *)label, strlen(label));
+
+        if (wfg_ok)
+            XftColorFree(bar->dpy, DefaultVisual(bar->dpy, bar->screen),
+                DefaultColormap(bar->dpy, bar->screen), &wfg);
 
         x += ext.xOff + bar->padding;
     }
@@ -327,6 +373,31 @@ void bar_click(Bar *bar, int x)
             setsid();
             execl("/bin/sh", "sh", "-c", w->click_cmd, NULL);
             _exit(1);
+        }
+    }
+}
+
+void bar_scroll(Bar *bar, int x, int button)
+{
+    for (int i = 0; i < bar->widget_count; i++) {
+        Widget *w = bar->widgets[i];
+        if (w->label[0] == '\0')
+            continue;
+        if (x < w->x || x >= w->x + w->w)
+            continue;
+
+        const char *cmd = NULL;
+        if (button == 4)
+            cmd = w->scroll_up;
+        else if (button == 5)
+            cmd = w->scroll_down;
+
+        if (cmd != NULL) {
+            if (fork() == 0) {
+                setsid();
+                execl("/bin/sh", "sh", "-c", cmd, NULL);
+                _exit(1);
+            }
         }
     }
 }
