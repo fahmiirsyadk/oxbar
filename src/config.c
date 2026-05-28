@@ -32,26 +32,25 @@ static const char *read_word(const char *s, char *buf, size_t len) {
     return s + i;
 }
 
-// Read a quoted string
 static const char *read_string(const char *s, char *buf, size_t len) {
-    if (*s != '"') {
+    char quote = *s;
+    if (quote != '"' && quote != '\'')
         return read_word(s, buf, len);
-    }
-    s++; // skip opening quote
+    s++;
     size_t i = 0;
-    while (*s != '\0' && *s != '"') {
-        if (i < len - 1) {
-            buf[i] = *s;
+    while (*s != '\0' && *s != quote) {
+        if (*s == '\\' && (s[1] == quote || s[1] == '\\')) {
+            s++;
         }
+        if (i < len - 1)
+            buf[i] = *s;
         i++;
         s++;
     }
-    if (*s == '"') {
-        s++; // skip closing quote
-    }
-    if (i < len) {
+    if (*s == quote)
+        s++;
+    if (i < len)
         buf[i] = '\0';
-    }
     return s;
 }
 
