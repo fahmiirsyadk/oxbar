@@ -3,25 +3,36 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <ctype.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xft/Xft.h>
 
 #include "bar.h"
-#include "widget.h"
+#include "oxbar.h"
+#include "plugin.h"
 #include "config.h"
 
-typedef Widget *(*WidgetCtor)(void);
+static unsigned long parse_hex(Display *dpy, int screen, const char *hex)
+{
+    XftColor c;
+    if (XftColorAllocName(dpy, DefaultVisual(dpy, screen),
+            DefaultColormap(dpy, screen), hex, &c))
+        return c.pixel;
+    return strtoul(hex + 1, NULL, 16);
+}
 
-typedef struct {
-    const char *name;
-    WidgetCtor ctor;
-} WidgetDef;
-
-static const WidgetDef widget_registry[] = {
-    { "time", widget_time_create },
-    { NULL,   NULL               },
-};
+static int parse_value(const char *s)
+{
+    int val = 0;
+    while (*s && !isdigit((unsigned char)*s))
+        s++;
+    while (*s && isdigit((unsigned char)*s)) {
+        val = val * 10 + (*s - '0');
+        s++;
+    }
+    return val;
+}
 
 static int bar_measure_width(Bar *bar)
 {
@@ -88,6 +99,17 @@ Bar *bar_create(Display *dpy, int screen, ConfigBlock *cfg)
     else
         bar->alignment = BAR_ALIGN_LEFT;
 
+    const char *type_str = config_get(cfg, "type");
+    bar->type = (type_str && strcmp(type_str, "osd") == 0) ? BAR_OSD : BAR_NORMAL;
+
+    const char *orient_str = config_get(cfg, "orientation");
+    bar->orientation = (orient_str && strcmp(orient_str, "vertical") == 0)
+        ? ORIENT_VERTICAL : ORIENT_HORIZONTAL;
+
+    const char *timeout_str = config_get(cfg, "timeout");
+    bar->timeout = timeout_str ? atoi(timeout_str) : 3;
+    bar->shown = (bar->type == BAR_NORMAL);
+
     const char *position = config_get(cfg, "position");
     if (position != NULL && strcmp(position, "bottom") == 0)
         bar->y = XDisplayHeight(dpy, screen) - bar->height;
@@ -109,12 +131,9 @@ Bar *bar_create(Display *dpy, int screen, ConfigBlock *cfg)
         Widget *widget = NULL;
         const char *name = child->name;
 
-        for (const WidgetDef *d = widget_registry; d->name != NULL; d++) {
-            if (strcmp(name, d->name) == 0) {
-                widget = d->ctor();
-                break;
-            }
-        }
+        WidgetCtor ctor = plugin_find(name);
+        if (ctor)
+            widget = ctor();
 
         if (widget == NULL && strcmp(name, "sep") == 0)
             widget = widget_cmd_create("sep", NULL, NULL, 0);
@@ -162,13 +181,21 @@ Bar *bar_create(Display *dpy, int screen, ConfigBlock *cfg)
         if (wbg != NULL)
             widget->bg = strdup(wbg);
 
+        const char *render_str = config_get(child, "render");
+        if (render_str && strcmp(render_str, "progress") == 0)
+            widget->render = RENDER_PROGRESS;
+
         widget_update(widget);
         bar->widgets[bar->widget_count++] = widget;
     }
 
     int screen_w = XDisplayWidth(dpy, screen);
 
-    if (bar->alignment == BAR_ALIGN_STRETCH) {
+    if (bar->orientation == ORIENT_VERTICAL) {
+        const char *width_str = config_get(cfg, "width");
+        bar->width = width_str ? atoi(width_str) : 30;
+        bar->x = 0;
+    } else if (bar->alignment == BAR_ALIGN_STRETCH) {
         bar->width = screen_w;
         bar->x = 0;
     } else {
@@ -197,33 +224,35 @@ Bar *bar_create(Display *dpy, int screen, ConfigBlock *cfg)
         XA_ATOM, 32, PropModeReplace, (unsigned char *)&type, 1);
 
     long strut[12] = {0};
-    if (bar->y == 0) {
-        strut[2] = bar->height;
-        strut[8] = bar->x;
-        strut[9] = bar->x + bar->width;
-        if (bar->alignment == BAR_ALIGN_LEFT || bar->alignment == BAR_ALIGN_STRETCH) {
-            strut[0] = bar->x + bar->width;
-            strut[4] = 0;
-            strut[5] = bar->height;
-        }
-        if (bar->alignment == BAR_ALIGN_RIGHT || bar->alignment == BAR_ALIGN_STRETCH) {
-            strut[1] = screen_w - bar->x;
-            strut[6] = 0;
-            strut[7] = bar->height;
-        }
-    } else {
-        strut[3] = bar->height;
-        strut[10] = bar->x;
-        strut[11] = bar->x + bar->width;
-        if (bar->alignment == BAR_ALIGN_LEFT || bar->alignment == BAR_ALIGN_STRETCH) {
-            strut[0] = bar->x + bar->width;
-            strut[4] = bar->y;
-            strut[5] = bar->y + bar->height;
-        }
-        if (bar->alignment == BAR_ALIGN_RIGHT || bar->alignment == BAR_ALIGN_STRETCH) {
-            strut[1] = screen_w - bar->x;
-            strut[6] = bar->y;
-            strut[7] = bar->y + bar->height;
+    if (bar->orientation != ORIENT_VERTICAL) {
+        if (bar->y == 0) {
+            strut[2] = bar->height;
+            strut[8] = bar->x;
+            strut[9] = bar->x + bar->width;
+            if (bar->alignment == BAR_ALIGN_LEFT || bar->alignment == BAR_ALIGN_STRETCH) {
+                strut[0] = bar->x + bar->width;
+                strut[4] = 0;
+                strut[5] = bar->height;
+            }
+            if (bar->alignment == BAR_ALIGN_RIGHT || bar->alignment == BAR_ALIGN_STRETCH) {
+                strut[1] = screen_w - bar->x;
+                strut[6] = 0;
+                strut[7] = bar->height;
+            }
+        } else {
+            strut[3] = bar->height;
+            strut[10] = bar->x;
+            strut[11] = bar->x + bar->width;
+            if (bar->alignment == BAR_ALIGN_LEFT || bar->alignment == BAR_ALIGN_STRETCH) {
+                strut[0] = bar->x + bar->width;
+                strut[4] = bar->y;
+                strut[5] = bar->y + bar->height;
+            }
+            if (bar->alignment == BAR_ALIGN_RIGHT || bar->alignment == BAR_ALIGN_STRETCH) {
+                strut[1] = screen_w - bar->x;
+                strut[6] = bar->y;
+                strut[7] = bar->y + bar->height;
+            }
         }
     }
     XChangeProperty(dpy, bar->win, XInternAtom(dpy, "_NET_WM_STRUT_PARTIAL", False),
@@ -234,7 +263,11 @@ Bar *bar_create(Display *dpy, int screen, ConfigBlock *cfg)
     XChangeWindowAttributes(dpy, bar->win, CWOverrideRedirect, &sa);
 
     XSelectInput(dpy, bar->win, ButtonPressMask);
-    XMapWindow(dpy, bar->win);
+
+    if (bar->type == BAR_OSD)
+        XUnmapWindow(dpy, bar->win);
+    else
+        XMapWindow(dpy, bar->win);
 
     bar->buf = XCreatePixmap(dpy, bar->win, bar->width, bar->height,
         DefaultDepth(dpy, screen));
@@ -267,16 +300,24 @@ void bar_destroy(Bar *bar)
     free(bar);
 }
 
-static unsigned long parse_color(Display *dpy, int screen, const char *hex)
+void bar_show(Bar *bar)
 {
-    XftColor c;
-    if (XftColorAllocName(dpy, DefaultVisual(dpy, screen),
-            DefaultColormap(dpy, screen), hex, &c))
-        return c.pixel;
-    return strtoul(hex + 1, NULL, 16);
+    if (bar->type == BAR_OSD && !bar->shown) {
+        XMapWindow(bar->dpy, bar->win);
+        bar->shown = 1;
+        bar->hide_at = time(NULL) + bar->timeout;
+    }
 }
 
-void bar_render(Bar *bar)
+void bar_hide(Bar *bar)
+{
+    if (bar->type == BAR_OSD && bar->shown) {
+        XUnmapWindow(bar->dpy, bar->win);
+        bar->shown = 0;
+    }
+}
+
+static void render_horizontal(Bar *bar)
 {
     unsigned long bg_pixel = strtoul(bar->bg + 1, NULL, 16);
     XSetForeground(bar->dpy, bar->gc, bg_pixel);
@@ -293,9 +334,9 @@ void bar_render(Bar *bar)
         DefaultColormap(bar->dpy, bar->screen), bar->sep_color, &sep_color);
 
     for (int i = 0; i < bar->widget_count; i++) {
-        Widget *widget = bar->widgets[i];
+        Widget *w = bar->widgets[i];
 
-        if (strcmp(widget->name, "sep") == 0) {
+        if (strcmp(w->name, "sep") == 0) {
             XGlyphInfo ext;
             XftTextExtentsUtf8(bar->dpy, bar->font,
                 (const unsigned char *)" | ", 3, &ext);
@@ -306,24 +347,24 @@ void bar_render(Bar *bar)
             continue;
         }
 
-        if (widget->label[0] == '\0')
+        if (w->label[0] == '\0')
             continue;
 
         char label[256];
-        if (widget->icon != NULL)
-            snprintf(label, sizeof(label), "%s %s", widget->icon, widget->label);
+        if (w->icon != NULL)
+            snprintf(label, sizeof(label), "%s %s", w->icon, w->label);
         else
-            snprintf(label, sizeof(label), "%s", widget->label);
+            snprintf(label, sizeof(label), "%s", w->label);
 
         XGlyphInfo ext;
         XftTextExtentsUtf8(bar->dpy, bar->font,
             (const unsigned char *)label, strlen(label), &ext);
 
-        widget->x = x;
-        widget->w = ext.xOff;
+        w->x = x;
+        w->w = ext.xOff;
 
-        if (widget->bg != NULL) {
-            unsigned long wbg = parse_color(bar->dpy, bar->screen, widget->bg);
+        if (w->bg != NULL) {
+            unsigned long wbg = parse_hex(bar->dpy, bar->screen, w->bg);
             XSetForeground(bar->dpy, bar->gc, wbg);
             XFillRectangle(bar->dpy, bar->buf, bar->gc,
                 x - bar->padding / 2, 0, ext.xOff + bar->padding, bar->height);
@@ -331,10 +372,9 @@ void bar_render(Bar *bar)
 
         XftColor wfg;
         Bool wfg_ok = False;
-        if (widget->fg != NULL) {
+        if (w->fg != NULL)
             wfg_ok = XftColorAllocName(bar->dpy, DefaultVisual(bar->dpy, bar->screen),
-                DefaultColormap(bar->dpy, bar->screen), widget->fg, &wfg);
-        }
+                DefaultColormap(bar->dpy, bar->screen), w->fg, &wfg);
 
         if (wfg_ok)
             XftDrawStringUtf8(bar->draw, &wfg, bar->font,
@@ -356,6 +396,86 @@ void bar_render(Bar *bar)
     if (sep_ok)
         XftColorFree(bar->dpy, DefaultVisual(bar->dpy, bar->screen),
             DefaultColormap(bar->dpy, bar->screen), &sep_color);
+}
+
+static void render_vertical(Bar *bar)
+{
+    unsigned long bg_pixel = strtoul(bar->bg + 1, NULL, 16);
+    XSetForeground(bar->dpy, bar->gc, bg_pixel);
+    XFillRectangle(bar->dpy, bar->buf, bar->gc, 0, 0, bar->width, bar->height);
+
+    int pad = 4;
+    int bar_top = pad;
+    int bar_bot = bar->height - pad;
+    int bar_h = bar_bot - bar_top;
+
+    for (int i = 0; i < bar->widget_count; i++) {
+        Widget *w = bar->widgets[i];
+
+        if (w->label[0] == '\0')
+            continue;
+
+        if (w->render == RENDER_PROGRESS) {
+            int pct = parse_value(w->label);
+            if (pct > 100) pct = 100;
+            if (pct < 0) pct = 0;
+            int fill = bar_h * pct / 100;
+
+            unsigned long wfg = parse_hex(bar->dpy, bar->screen,
+                w->fg ? w->fg : bar->fg);
+            XSetForeground(bar->dpy, bar->gc, wfg);
+            XFillRectangle(bar->dpy, bar->buf, bar->gc,
+                pad, bar_bot - fill, bar->width - pad * 2, fill);
+
+            if (w->icon != NULL) {
+                XftColor icon_color;
+                Bool icon_ok = XftColorAllocName(bar->dpy,
+                    DefaultVisual(bar->dpy, bar->screen),
+                    DefaultColormap(bar->dpy, bar->screen),
+                    w->fg ? w->fg : bar->fg, &icon_color);
+                if (icon_ok) {
+                    XftDrawStringUtf8(bar->draw, &icon_color, bar->font,
+                        pad, bar_top + 14,
+                        (const unsigned char *)w->icon, strlen(w->icon));
+                    XftColorFree(bar->dpy, DefaultVisual(bar->dpy, bar->screen),
+                        DefaultColormap(bar->dpy, bar->screen), &icon_color);
+                }
+            }
+        } else {
+            char label[256];
+            if (w->icon != NULL)
+                snprintf(label, sizeof(label), "%s %s", w->icon, w->label);
+            else
+                snprintf(label, sizeof(label), "%s", w->label);
+
+            XGlyphInfo ext;
+            XftTextExtentsUtf8(bar->dpy, bar->font,
+                (const unsigned char *)label, strlen(label), &ext);
+
+            XftColor wfg;
+            Bool wfg_ok = XftColorAllocName(bar->dpy,
+                DefaultVisual(bar->dpy, bar->screen),
+                DefaultColormap(bar->dpy, bar->screen),
+                w->fg ? w->fg : bar->fg, &wfg);
+
+            if (wfg_ok)
+                XftDrawStringUtf8(bar->draw, &wfg, bar->font,
+                    pad, bar_top + 14 + i * 18,
+                    (const unsigned char *)label, strlen(label));
+
+            if (wfg_ok)
+                XftColorFree(bar->dpy, DefaultVisual(bar->dpy, bar->screen),
+                    DefaultColormap(bar->dpy, bar->screen), &wfg);
+        }
+    }
+}
+
+void bar_render(Bar *bar)
+{
+    if (bar->orientation == ORIENT_VERTICAL)
+        render_vertical(bar);
+    else
+        render_horizontal(bar);
 
     XCopyArea(bar->dpy, bar->buf, bar->win, bar->gc,
         0, 0, bar->width, bar->height, 0, 0);

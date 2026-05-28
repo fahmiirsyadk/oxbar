@@ -2,99 +2,66 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <unistd.h>
-
-#include "widget.h"
-
-static void run_cmd(const char *cmd, char *buf, size_t len)
-{
-    if (cmd == NULL || *cmd == '\0') {
-        buf[0] = '\0';
-        return;
-    }
-
-    FILE *f = popen(cmd, "r");
-    if (f == NULL) {
-        buf[0] = '\0';
-        return;
-    }
-
-    if (fgets(buf, len, f) != NULL) {
-        size_t n = strlen(buf);
-        while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r'))
-            buf[--n] = '\0';
-    } else {
-        buf[0] = '\0';
-    }
-
-    pclose(f);
-}
+#include "oxbar.h"
 
 Widget *widget_create(const char *name, const char *icon,
                       double interval, WidgetUpdate update, void *ctx)
 {
-    Widget *widget = calloc(1, sizeof(Widget));
-    if (widget == NULL)
-        return NULL;
-
-    widget->name = strdup(name);
-    widget->icon = icon ? strdup(icon) : NULL;
-    widget->label = calloc(256, sizeof(char));
-    widget->interval = interval;
-    widget->update = update;
-    widget->ctx = ctx;
-
-    return widget;
+    Widget *w = calloc(1, sizeof(Widget));
+    if (!w) return NULL;
+    w->name = strdup(name);
+    w->icon = icon ? strdup(icon) : NULL;
+    w->label = calloc(256, sizeof(char));
+    w->interval = interval;
+    w->update = update;
+    w->ctx = ctx;
+    return w;
 }
 
-void widget_destroy(Widget *widget)
+void widget_destroy(Widget *w)
 {
-    if (widget == NULL)
-        return;
-    free(widget->name);
-    free(widget->icon);
-    free(widget->label);
-    free(widget->click_cmd);
-    free(widget->scroll_up);
-    free(widget->scroll_down);
-    free(widget->fg);
-    free(widget->bg);
-    free(widget);
+    if (!w) return;
+    free(w->name);
+    free(w->icon);
+    free(w->label);
+    free(w->click_cmd);
+    free(w->scroll_up);
+    free(w->scroll_down);
+    free(w->fg);
+    free(w->bg);
+    free(w);
 }
 
-void widget_update(Widget *widget)
+void widget_update(Widget *w)
 {
-    if (widget->update != NULL)
-        widget->update(widget->ctx, widget->label, 256);
+    if (w->update)
+        w->update(w->ctx, w->label, 256);
 }
 
-static void update_time(void *ctx, char *buf, size_t len)
+void run_cmd(const char *cmd, char *buf, size_t len)
 {
-    (void)ctx;
-    time_t t = time(NULL);
-    struct tm *tm = localtime(&t);
-    snprintf(buf, len, "%02d:%02d:%02d",
-        tm->tm_hour, tm->tm_min, tm->tm_sec);
+    if (!cmd || !*cmd) { buf[0] = '\0'; return; }
+    FILE *f = popen(cmd, "r");
+    if (!f) { buf[0] = '\0'; return; }
+    if (fgets(buf, len, f)) {
+        size_t n = strlen(buf);
+        while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == '\r'))
+            buf[--n] = '\0';
+    } else {
+        buf[0] = '\0';
+    }
+    pclose(f);
 }
 
-Widget *widget_time_create(void)
-{
-    return widget_create("time", NULL, 1.0, update_time, NULL);
-}
-
-static void update_cmd(void *ctx, char *buf, size_t len)
+void update_cmd(void *ctx, char *buf, size_t len)
 {
     const char *cmd = (const char *)ctx;
-    if (cmd != NULL)
-        run_cmd(cmd, buf, len);
-    else
-        buf[0] = '\0';
+    if (cmd) run_cmd(cmd, buf, len);
+    else buf[0] = '\0';
 }
 
 Widget *widget_cmd_create(const char *name, const char *icon,
                           const char *cmd, double interval)
 {
-    return widget_create(name, icon, interval,
-        update_cmd, (void *)cmd);
+    return widget_create(name, icon, interval, update_cmd, (void *)cmd);
 }

@@ -11,7 +11,8 @@ PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 
 SRC = $(wildcard src/*.c)
-OBJ = $(SRC:src/%.c=build/%.o)
+PLG = $(wildcard plugins/*.c)
+OBJ = $(SRC:src/%.c=build/%.o) $(PLG:plugins/%.c=build/%.o)
 DEP = $(OBJ:.o=.d)
 BIN = oxbar
 
@@ -21,6 +22,10 @@ $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lm
 
 build/%.o: src/%.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+build/%.o: plugins/%.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c -o $@ $<
 

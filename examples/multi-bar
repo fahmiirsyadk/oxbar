@@ -1,5 +1,6 @@
-# oxbar - multi bar (left / center / right)
-# kill -HUP $(pidof oxbar) to reload config
+# oxbar - multi bar with volume/brightness OSD
+# kill -HUP $(pidof oxbar)  to reload config
+# kill -USR1 $(pidof oxbar) to show OSD bars
 
 bar left {
     position top
@@ -57,16 +58,16 @@ bar right {
         interval 2
         cmd "pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | grep -oP '\\d+%' | head -1 || echo '??%'"
         click "pavucontrol"
-        scroll_up "amixer set Master 5%+"
-        scroll_down "amixer set Master 5%-"
+        scroll_up "amixer set Master 5%+ && kill -USR1 $(pidof oxbar)"
+        scroll_down "amixer set Master 5%- && kill -USR1 $(pidof oxbar)"
     }
     widget sep   {}
     widget bright {
         icon LIT
         interval 5
         cmd "paste /sys/class/backlight/*/brightness /sys/class/backlight/*/max_brightness 2>/dev/null | awk '{printf \"%d%%\",$1*100/$2}' || echo '??%'"
-        scroll_up "brightnessctl set +5%"
-        scroll_down "brightnessctl set 5%-"
+        scroll_up "brightnessctl set +5% && kill -USR1 $(pidof oxbar)"
+        scroll_down "brightnessctl set 5%- && kill -USR1 $(pidof oxbar)"
         fg #ffff00
     }
     widget sep   {}
@@ -75,5 +76,45 @@ bar right {
         interval 30
         fg #00ff00
         cmd "if [ -f /sys/class/power_supply/BAT0/capacity ]; then printf '%d%%' $(cat /sys/class/power_supply/BAT0/capacity); else echo AC; fi"
+    }
+}
+
+bar vol_osd {
+    type osd
+    position left
+    orientation vertical
+    height 200
+    width 30
+    timeout 3
+    fg #ffffff
+    bg #111111
+    padding 4
+
+    widget volume {
+        icon VOL
+        render progress
+        interval 0.5
+        cmd "pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | grep -oP '\\d+' | head -1 || echo '0'"
+        fg #4488ff
+    }
+}
+
+bar bright_osd {
+    type osd
+    position left
+    orientation vertical
+    height 200
+    width 30
+    timeout 3
+    fg #ffffff
+    bg #111111
+    padding 4
+
+    widget brightness {
+        icon LIT
+        render progress
+        interval 0.5
+        cmd "paste /sys/class/backlight/*/brightness /sys/class/backlight/*/max_brightness 2>/dev/null | awk '{printf \"%d\",$1*100/$2}' || echo '0'"
+        fg #ffff00
     }
 }

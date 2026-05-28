@@ -6,16 +6,20 @@
 #include <time.h>
 
 #include "bar.h"
-#include "widget.h"
+#include "oxbar.h"
+#include "plugin.h"
 #include "config.h"
 
 static volatile int running = 1;
 static volatile int reload = 0;
+static volatile int show_osd = 0;
 
 static void sig_handler(int sig)
 {
     if (sig == SIGHUP)
         reload = 1;
+    else if (sig == SIGUSR1)
+        show_osd = 1;
     else
         running = 0;
 }
@@ -23,7 +27,7 @@ static void sig_handler(int sig)
 static void bars_destroy(Bar **bars)
 {
     Bar *bar = *bars;
-    while (bar != NULL) {
+    while (bar) {
         Bar *next = bar->next;
         bar_destroy(bar);
         bar = next;
@@ -35,59 +39,49 @@ static int bars_create(Display *dpy, int screen, Config *cfg, Bar **bars)
 {
     Bar *last = NULL;
     *bars = NULL;
-
-    for (ConfigBlock *bc = cfg->bars; bc != NULL; bc = bc->next) {
+    for (ConfigBlock *bc = cfg->bars; bc; bc = bc->next) {
         Bar *bar = bar_create(dpy, screen, bc);
-        if (bar != NULL) {
-            if (*bars == NULL)
-                *bars = bar;
-            else
-                last->next = bar;
+        if (bar) {
+            if (!*bars) *bars = bar;
+            else last->next = bar;
             last = bar;
         }
     }
-
     return *bars != NULL;
 }
 
 int main(int argc, char *argv[])
 {
     const char *config_path = getenv("OXBAR_CONFIG");
-    if (config_path == NULL) {
+    if (!config_path) {
         config_path = getenv("HOME");
         char path[256];
         snprintf(path, sizeof(path), "%s/.config/oxbar/config", config_path);
         config_path = strdup(path);
     }
+    if (argc > 1) config_path = argv[1];
 
-    if (argc > 1)
-        config_path = argv[1];
+    struct sigaction sa = { .sa_handler = sig_handler, .sa_flags = SA_RESTART };
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGHUP, &sa, NULL);
+    sigaction(SIGUSR1, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
 
-    signal(SIGINT, sig_handler);
-    signal(SIGTERM, sig_handler);
-    signal(SIGHUP, sig_handler);
+    plugin_init_all();
 
     Config *cfg = config_parse(config_path);
-    if (cfg == NULL) {
-        fprintf(stderr, "oxbar: failed to parse config\n");
-        return 1;
-    }
+    if (!cfg) { fprintf(stderr, "oxbar: failed to parse config\n"); return 1; }
 
     Display *dpy = XOpenDisplay(NULL);
-    if (dpy == NULL) {
-        fprintf(stderr, "oxbar: cannot open display\n");
-        config_free(cfg);
-        return 1;
-    }
+    if (!dpy) { fprintf(stderr, "oxbar: cannot open display\n"); config_free(cfg); return 1; }
 
     int screen = DefaultScreen(dpy);
     Bar *bars = NULL;
 
     if (!bars_create(dpy, screen, cfg, &bars)) {
         fprintf(stderr, "oxbar: no bars configured\n");
-        XCloseDisplay(dpy);
-        config_free(cfg);
-        return 1;
+        XCloseDisplay(dpy); config_free(cfg); return 1;
     }
 
     struct timespec ts = { .tv_sec = 0, .tv_nsec = 100000000 };
@@ -100,39 +94,47 @@ int main(int argc, char *argv[])
             bars_destroy(&bars);
             config_free(cfg);
             cfg = config_parse(config_path);
-            if (cfg == NULL) {
-                fprintf(stderr, "oxbar: config reload failed\n");
-                break;
-            }
+            if (!cfg) { fprintf(stderr, "oxbar: config reload failed\n"); break; }
             bars_create(dpy, screen, cfg, &bars);
             fprintf(stderr, "oxbar: config reloaded\n");
         }
 
-        double now = tick.tv_sec + tick.tv_nsec / 1e9;
-        for (Bar *bar = bars; bar != NULL; bar = bar->next) {
-            for (int i = 0; i < bar->widget_count; i++) {
-                Widget *w = bar->widgets[i];
-                if (w->interval > 0 && now - w->last_update >= w->interval) {
-                    widget_update(w);
-                    w->last_update = now;
-                }
-            }
+        if (show_osd) {
+            show_osd = 0;
+            for (Bar *b = bars; b; b = b->next) bar_show(b);
         }
 
-        for (Bar *bar = bars; bar != NULL; bar = bar->next)
-            bar_render(bar);
+        time_t now = time(NULL);
+        for (Bar *b = bars; b; b = b->next)
+            if (b->type == BAR_OSD && b->shown && now >= b->hide_at)
+                bar_hide(b);
+
+        double now_f = tick.tv_sec + tick.tv_nsec / 1e9;
+        for (Bar *b = bars; b; b = b->next)
+            for (int i = 0; i < b->widget_count; i++) {
+                Widget *w = b->widgets[i];
+                if (w->interval > 0 && now_f - w->last_update >= w->interval) {
+                    widget_update(w);
+                    w->last_update = now_f;
+                }
+            }
+
+        for (Bar *b = bars; b; b = b->next) {
+            if (b->type == BAR_OSD && !b->shown) continue;
+            bar_render(b);
+        }
 
         while (XPending(dpy) > 0) {
             XEvent ev;
             XNextEvent(dpy, &ev);
             if (ev.type == ButtonPress) {
-                for (Bar *bar = bars; bar != NULL; bar = bar->next) {
-                    if (ev.xbutton.window != bar->win)
-                        continue;
+                for (Bar *b = bars; b; b = b->next) {
+                    if (ev.xbutton.window != b->win) continue;
+                    if (b->type == BAR_OSD) { bar_show(b); continue; }
                     if (ev.xbutton.button == 4 || ev.xbutton.button == 5)
-                        bar_scroll(bar, ev.xbutton.x, ev.xbutton.button);
+                        bar_scroll(b, ev.xbutton.x, ev.xbutton.button);
                     else
-                        bar_click(bar, ev.xbutton.x);
+                        bar_click(b, ev.xbutton.x);
                 }
             }
         }
@@ -145,6 +147,5 @@ int main(int argc, char *argv[])
     bars_destroy(&bars);
     XCloseDisplay(dpy);
     config_free(cfg);
-
     return 0;
 }

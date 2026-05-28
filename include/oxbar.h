@@ -1,7 +1,13 @@
-#ifndef WIDGET_H
-#define WIDGET_H
+#ifndef OXBAR_H
+#define OXBAR_H
+
+#include <stddef.h>
+#include <X11/Xlib.h>
+#include <X11/Xft/Xft.h>
 
 typedef void (*WidgetUpdate)(void *ctx, char *buf, size_t len);
+
+typedef enum { RENDER_TEXT, RENDER_PROGRESS } RenderMode;
 
 typedef struct Widget {
     char *name;
@@ -12,6 +18,7 @@ typedef struct Widget {
     char *scroll_down;
     char *fg;
     char *bg;
+    RenderMode render;
     double interval;
     WidgetUpdate update;
     void *ctx;
@@ -25,7 +32,9 @@ Widget *widget_create(const char *name, const char *icon,
 void widget_destroy(Widget *widget);
 void widget_update(Widget *widget);
 
-Widget *widget_time_create(void);
+void run_cmd(const char *cmd, char *buf, size_t len);
+void update_cmd(void *ctx, char *buf, size_t len);
+
 Widget *widget_cmd_create(const char *name, const char *icon,
                           const char *cmd, double interval);
 
