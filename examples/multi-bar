@@ -15,13 +15,13 @@ bar left {
     widget cpu {
         icon CPU
         interval 2
-        cmd "awk '/^cpu /{u=\$2+\$4;s=\$2+\$3+\$4+\$5;printf \"%d%%\",(1-u/s)*100}' /proc/stat"
+        cmd "awk '/^cpu /{u=$2+$4;s=$2+$3+$4+$5;printf \"%d%%\",(1-u/s)*100}' /proc/stat"
     }
     widget sep   {}
     widget mem {
         icon MEM
         interval 2
-        cmd "free -m | awk '/^Mem:/{printf \"%ldMB\",\$3}'"
+        cmd "free -m | awk '/^Mem:/{printf \"%ldMB\",$3}'"
     }
 }
 
@@ -61,12 +61,12 @@ bar right {
     widget bright {
         icon LIT
         interval 5
-        cmd "awk '{printf \"%d%%\",\$1*100/\$2}' /sys/class/backlight/*/brightness /sys/class/backlight/*/max_brightness 2>/dev/null || echo '??%'"
+        cmd "paste /sys/class/backlight/*/brightness /sys/class/backlight/*/max_brightness 2>/dev/null | awk '{printf \"%d%%\",$1*100/$2}' || echo '??%'"
     }
     widget sep   {}
     widget bat {
         icon BAT
         interval 30
-        cmd "if [ -f /sys/class/power_supply/BAT0/capacity ]; then printf '%d%%' \$(cat /sys/class/power_supply/BAT0/capacity); else echo AC; fi"
+        cmd "if [ -f /sys/class/power_supply/BAT0/capacity ]; then printf '%d%%' $(cat /sys/class/power_supply/BAT0/capacity); else echo AC; fi"
     }
 }
