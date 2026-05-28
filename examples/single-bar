@@ -30,8 +30,8 @@ bar main {
         interval 2
         cmd "pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | grep -oP '\\d+%' | head -1 || echo '??%'"
         click "pavucontrol"
-        scroll_up "amixer set Master 5%+ && kill -USR1 $(pidof oxbar)"
-        scroll_down "amixer set Master 5%- && kill -USR1 $(pidof oxbar)"
+        scroll_up "pactl set-sink-volume @DEFAULT_SINK@ +5% && kill -USR1 $(pidof oxbar)"
+        scroll_down "pactl set-sink-volume @DEFAULT_SINK@ -5% && kill -USR1 $(pidof oxbar)"
     }
     widget sep    {}
     widget bright {
