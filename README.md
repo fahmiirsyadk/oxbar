@@ -17,7 +17,7 @@ A minimal, extensible status bar for X11 written in C.
 - Click handlers (launch apps on widget click)
 - Per-widget update intervals
 - Configurable colors, fonts, padding
-- Multiple bars (top/bottom)
+- Multiple bars (left, center, right) with adaptive width
 - EWMH dock window type (reserves screen space)
 
 ## Installation
@@ -60,11 +60,14 @@ OXBAR_CONFIG=/path/to/config oxbar  # env var override
 
 ## Configuration
 
-Config lives at `~/.config/oxbar/config`. Format is hierarchical blocks:
+Config lives at `~/.config/oxbar/config`. Format is hierarchical blocks.
+
+Multiple bars can coexist — define separate `bar` blocks with `alignment`:
 
 ```
-bar main {
+bar left {
     position top
+    alignment left
     height 24
     font monospace:size=11
     fg #ffffff
@@ -72,33 +75,29 @@ bar main {
     sep_color #555555
     padding 8
 
-    widget time {
-        interval 1
-    }
+    widget time  { interval 1 }
+    widget sep   {}
+    widget cpu   { icon CPU interval 1 }
+    widget sep   {}
+    widget mem   { icon MEM interval 1 }
+}
 
-    widget sep {}
+bar center {
+    position top
+    alignment center
+    height 24
+    widget date { interval 60 }
+}
 
-    widget cpu {
-        icon CPU
-        interval 1
-    }
-
-    widget mem {
-        icon MEM
-        interval 1
-    }
-
-    widget sep {}
-
-    widget vol {
-        icon VOL
-        interval 1
-        click cmd "pavucontrol"
-    }
-
-    widget date {
-        interval 60
-    }
+bar right {
+    position top
+    alignment right
+    height 24
+    widget vol    { icon VOL interval 1 }
+    widget sep    {}
+    widget bright { icon LIT interval 5 }
+    widget sep    {}
+    widget bat    { icon BAT interval 30 }
 }
 ```
 
@@ -107,6 +106,7 @@ bar main {
 | Key | Default | Description |
 |-----|---------|-------------|
 | `position` | `top` | `top` or `bottom` |
+| `alignment` | `left` | `left`, `center`, `right`, or `stretch` |
 | `height` | `24` | Bar height in pixels |
 | `font` | `monospace:size=11` | Xft font name |
 | `fg` | `#ffffff` | Foreground color (hex) |

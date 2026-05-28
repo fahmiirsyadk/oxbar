@@ -1,8 +1,8 @@
 # oxbar configuration
-# Each bar { } block defines a separate bar
 
-bar main {
+bar left {
     position top
+    alignment left
     height 24
     font monospace:size=11
     fg #ffffff
@@ -12,7 +12,6 @@ bar main {
 
     widget time {
         interval 1
-        click cmd "tzselect"
     }
 
     widget sep {}
@@ -22,12 +21,38 @@ bar main {
         interval 1
     }
 
+    widget sep {}
+
     widget mem {
         icon MEM
         interval 1
     }
+}
 
-    widget sep {}
+bar center {
+    position top
+    alignment center
+    height 24
+    font monospace:size=11
+    fg #ffffff
+    bg #000000
+    sep_color #555555
+    padding 8
+
+    widget date {
+        interval 60
+    }
+}
+
+bar right {
+    position top
+    alignment right
+    height 24
+    font monospace:size=11
+    fg #ffffff
+    bg #000000
+    sep_color #555555
+    padding 8
 
     widget vol {
         icon VOL
@@ -35,27 +60,17 @@ bar main {
         click cmd "pavucontrol"
     }
 
+    widget sep {}
+
     widget bright {
         icon LIT
         interval 5
     }
 
+    widget sep {}
+
     widget bat {
         icon BAT
         interval 30
     }
-
-    widget sep {}
-
-    widget date {
-        interval 60
-    }
 }
-
-# Example: second bar at bottom
-# bar bottom {
-#     position bottom
-#     height 20
-#     widget load { interval 1 }
-#     widget uptime { interval 60 }
-# }

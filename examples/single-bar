@@ -1,0 +1,27 @@
+# oxbar - single bar example
+
+bar main {
+    position top
+    height 24
+    font monospace:size=11
+    fg #ffffff
+    bg #000000
+    sep_color #555555
+    padding 8
+
+    widget time   { interval 1 }
+    widget sep    {}
+    widget cpu    { icon CPU interval 1 }
+    widget sep    {}
+    widget mem    { icon MEM interval 1 }
+    widget sep    {}
+    widget net    { icon NET interval 1 }
+    widget sep    {}
+    widget vol    { icon VOL interval 1 }
+    widget sep    {}
+    widget bright { icon LIT interval 5 }
+    widget sep    {}
+    widget bat    { icon BAT interval 30 }
+    widget sep    {}
+    widget date   { interval 60 }
+}
