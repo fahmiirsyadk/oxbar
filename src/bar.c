@@ -313,6 +313,8 @@ void bar_show(Bar *bar)
         XMapWindow(bar->dpy, bar->win);
         bar->shown = 1;
         bar->hide_at = time(NULL) + bar->timeout;
+        for (int i = 0; i < bar->widget_count; i++)
+            widget_update(bar->widgets[i]);
     }
 }
 
