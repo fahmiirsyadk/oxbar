@@ -2,22 +2,26 @@
 
 A minimal C toolkit for building X11 status bars and widgets.
 
-No config files. Each program is self-contained — you write C, not config.
+No config files. Write C, not config.
 
-## Structure
+## Quick Start
 
-```
-include/ox.h       Core API
-src/
-  widget.c         Widget lifecycle
-  draw.c           Rendering: text, rect, xpm, window
-  loop.c           Event loop
-examples/
-  simple-bar.c     Single bar
-  multi-bar.c      Left/center/right bars
-  vertical-bar.c   Sidebar
-  osd.c            OSD overlay
-  xmobar.c         Full xmobar-style bar
+```c
+#include "ox.h"
+
+int main(void) {
+    ox_init();
+
+    OxWindow *win = ox_window_new(0, 0, 200, 28);
+    ox_window_set_bg(win, "#000000");
+    ox_window_show(win);
+
+    OxWidget *w = ox_widget_new("clock", 1.0);
+    ox_widget_set_update(w, my_update, NULL);
+
+    ox_run();
+    return 0;
+}
 ```
 
 ## Build
@@ -26,301 +30,366 @@ examples/
 make
 ```
 
-### Dependencies
+Dependencies: libx11, libxft, libxpm, freetype2, fontconfig
 
-- libx11, libxft, freetype2, fontconfig, libxpm
+## API Reference
 
-```bash
-# Arch
-sudo pacman -S libx11 libxft freetype2 fontconfig libxpm
-
-# Debian/Ubuntu
-sudo apt install libx11-dev libxft-dev libfreetype-dev libfontconfig1-dev libxpm-dev
-```
-
-## API
-
-### Widget
-
-```c
-OxWidget *ox_widget_new(const char *name, double interval);
-void ox_widget_destroy(OxWidget *w);
-void ox_widget_set_update(OxWidget *w, OxWidgetUpdate update, void *ctx);
-void ox_widget_set_click(OxWidget *w, OxWidgetClick click);
-void ox_widget_set_icon(OxWidget *w, const char *icon);
-void ox_widget_set_label_text(OxWidget *w, const char *text);
-void ox_widget_set_colors(OxWidget *w, const char *fg, const char *bg);
-void ox_widget_set_render_progress(OxWidget *w, int enable);
-void ox_widget_update(OxWidget *w);
-void ox_widget_do_click(OxWidget *w);
-
-const char *ox_widget_get_name(OxWidget *w);
-const char *ox_widget_get_label(OxWidget *w);
-const char *ox_widget_get_icon(OxWidget *w);
-const char *ox_widget_get_fg(OxWidget *w);
-const char *ox_widget_get_bg(OxWidget *w);
-double ox_widget_get_interval(OxWidget *w);
-double ox_widget_get_last_update(OxWidget *w);
-void ox_widget_set_last_update(OxWidget *w, double t);
-```
-
-### Window
-
-```c
-OxWindow *ox_window_new(int x, int y, int w, int h);
-void ox_window_destroy(OxWindow *win);
-void ox_window_set_bg(OxWindow *win, const char *color);
-void ox_window_set_font(OxWindow *win, const char *font);
-void ox_window_set_click(OxWindow *win, OxWindowClick click);
-void ox_window_set_strut(OxWindow *win, int top, int bottom, int left, int right);
-void ox_window_show(OxWindow *win);
-void ox_window_hide(OxWindow *win);
-void ox_window_move(OxWindow *win, int x, int y);
-void ox_window_resize(OxWindow *win, int w, int h);
-Window ox_window_handle(OxWindow *win);
-```
-
-### Draw
-
-```c
-void ox_draw_rect(OxWindow *win, int x, int y, int w, int h, const char *color);
-void ox_draw_text(OxWindow *win, int x, int y, const char *text, const char *fg);
-void ox_draw_xpm(OxWindow *win, int x, int y, const char *path);
-void ox_draw_sep(OxWindow *win, int x, int y, const char *sep, const char *fg);
-void ox_draw_flush(OxWindow *win);
-int ox_text_width(OxWindow *win, const char *text);
-```
-
-### Loop
+### ox_init
 
 ```c
 void ox_init(void);
+```
+
+Initialize the ox library. Must be called before any other ox function. Opens the X11 display connection.
+
+### ox_run
+
+```c
 void ox_run(void);
+```
+
+Start the event loop. Blocks until `ox_quit()` is called or a termination signal is received. Handles X11 events (clicks, exposure) and widget updates.
+
+### ox_quit
+
+```c
 void ox_quit(void);
 ```
 
-## Creating Widgets
+Stop the event loop. Can be called from signal handlers or click callbacks.
 
-A widget is a data source with an update callback. It writes its output into a 256-byte buffer.
+---
 
-### Basic widget
-
-```c
-#include "ox.h"
-
-static void my_update(void *ctx, char *buf, size_t len) {
-    (void)ctx;
-    snprintf(buf, len, "hello %d", 42);
-}
-
-int main(void) {
-    ox_init();
-
-    OxWindow *win = ox_window_new(0, 0, 200, 28);
-    ox_window_set_bg(win, "#000000");
-    ox_window_set_font(win, "monospace:size=11");
-    ox_window_show(win);
-
-    OxWidget *w = ox_widget_new("mywidget", 1.0);  /* update every 1s */
-    ox_widget_set_update(w, my_update, NULL);
-
-    /* render loop */
-    while (1) {
-        ox_widget_update(w);
-        ox_draw_rect(win, 0, 0, 200, 28, "#000000");
-        ox_draw_text(win, 8, 18, ox_widget_get_label(w), "#ffffff");
-        /* ... handle events, sleep ... */
-    }
-
-    return 0;
-}
-```
-
-### Widget with context
-
-Pass state to your widget via `ctx`:
+### ox_widget_new
 
 ```c
-typedef struct {
-    int min;
-    int max;
-} Range;
-
-static void temp_update(void *ctx, char *buf, size_t len) {
-    Range *r = ctx;
-    FILE *f = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
-    if (f) {
-        int raw = 0;
-        fscanf(f, "%d", &raw);
-        fclose(f);
-        int c = raw / 1000;
-        snprintf(buf, len, "%d°C", c);
-    }
-}
-
-Range temp_range = { .min = 0, .max = 100 };
-OxWidget *temp = ox_widget_new("temp", 5.0);
-ox_widget_set_update(temp, temp_update, &temp_range);
+OxWidget *ox_widget_new(const char *name, double interval);
 ```
 
-### Widget with click handler
+Create a new widget.
+
+- `name` — identifier string (used for lookup, logging)
+- `interval` — update interval in seconds (0 = never auto-update)
+
+Returns a newly allocated widget. Free with `ox_widget_destroy()`.
+
+### ox_widget_destroy
 
 ```c
-static void on_click(void *ctx) {
-    system("pactl set-sink-mute @DEFAULT_SINK@ toggle");
-}
-
-OxWidget *vol = ox_widget_new("vol", 5.0);
-ox_widget_set_update(vol, vol_update, NULL);
-ox_widget_set_click(vol, on_click);
+void ox_widget_destroy(OxWidget *w);
 ```
 
-### Static text widget
+Free a widget and its resources.
 
-For widgets that don't need periodic updates:
+### ox_widget_set_update
 
 ```c
-OxWidget *label = ox_widget_new("label", 0);  /* interval=0 */
-ox_widget_set_label_text(label, "static text");
+void ox_widget_set_update(OxWidget *w, OxWidgetUpdate update, void *ctx);
 ```
 
-## Multiple Widgets
+Set the update callback. Called when the widget's interval elapses.
 
-Create multiple widgets and add them to a bar:
+- `update` — function signature: `void (*)(void *ctx, char *buf, size_t len)`
+- `ctx` — opaque pointer passed to the callback
+
+The callback writes its output into `buf` (256 bytes max).
+
+### ox_widget_set_click
 
 ```c
-Bar bar = { .height = 28, .padding = 8, .fg = "#ffffff", .bg = "#000000" };
-
-/* time widget */
-OxWidget *time = ox_widget_new("time", 1.0);
-ox_widget_set_update(time, time_update, NULL);
-bar_add(&bar, time);
-
-/* cpu widget */
-OxWidget *cpu = ox_widget_new("cpu", 2.0);
-ox_widget_set_update(cpu, cpu_update, NULL);
-bar_add(&bar, cpu);
-
-/* mem widget */
-OxWidget *mem = ox_widget_new("mem", 2.0);
-ox_widget_set_update(mem, mem_update, NULL);
-bar_add(&bar, mem);
+void ox_widget_set_click(OxWidget *w, OxWidgetClick click);
 ```
 
-### Multiple bars
+Set the click callback. Called when the widget is clicked.
 
-Create separate bars at different positions:
+- `click` — function signature: `void (*)(void *ctx)`
+
+### ox_widget_set_icon
 
 ```c
-/* left bar */
-Bar left = { .height = 28, .padding = 8, .fg = "#ffffff", .bg = "#000000" };
-bar_add(&left, ox_widget_new("time", 1.0));
-
-/* right bar */
-Bar right = { .height = 28, .padding = 8, .fg = "#b3afc2", .bg = "#000000" };
-bar_add(&right, ox_widget_new("vol", 5.0));
-bar_add(&right, ox_widget_new("bat", 30.0));
-
-/* create windows */
-left.win = ox_window_new(0, 0, left_w, 28);
-right.win = ox_window_new(sw - right_w, 0, right_w, 28);
+void ox_widget_set_icon(OxWidget *w, const char *icon);
 ```
 
-### Rendering a bar
+Set an icon prefix. Rendered before the label text. Set to `""` or `NULL` for no icon.
+
+### ox_widget_set_label_text
 
 ```c
-static void bar_render(Bar *b) {
-    int cy = b->height / 2 + ox_text_width(b->win, "X") / 3;
-    int w = bar_width(b, b->win);
-    ox_draw_rect(b->win, 0, 0, w, b->height, b->bg);
-    int cx = b->padding;
-    for (int i = 0; i < b->count; i++) {
-        if (i > 0) {
-            ox_draw_text(b->win, cx, cy, " | ", b->sep);
-            cx += ox_text_width(b->win, " | ") + b->padding;
-        }
-        const char *label = ox_widget_get_label(b->widgets[i]);
-        const char *color = ox_widget_get_fg(b->widgets[i]) ?: b->fg;
-        ox_draw_text(b->win, cx, cy, label, color);
-        cx += ox_text_width(b->win, label) + b->padding;
-    }
-}
+void ox_widget_set_label_text(OxWidget *w, const char *text);
 ```
 
-### Update loop
+Set a static label. Use for widgets that don't need periodic updates (interval=0).
+
+### ox_widget_set_colors
 
 ```c
-struct timespec ts = { .tv_sec = 0, .tv_nsec = 100000000 };  /* 100ms */
-for (;;) {
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    double cur = now.tv_sec + now.tv_nsec / 1e9;
-
-    /* update widgets on interval */
-    for (int i = 0; i < bar.count; i++) {
-        OxWidget *w = bar.widgets[i];
-        if (ox_widget_get_interval(w) > 0 &&
-            cur - ox_widget_get_last_update(w) >= ox_widget_get_interval(w)) {
-            ox_widget_update(w);
-            ox_widget_set_last_update(w, cur);
-        }
-    }
-
-    /* render */
-    bar_render(&bar);
-
-    /* handle events */
-    Display *dpy = ox_display();
-    while (XPending(dpy) > 0) {
-        XEvent ev;
-        XNextEvent(dpy, &ev);
-        /* handle clicks ... */
-    }
-
-    XFlush(dpy);
-    nanosleep(&ts, NULL);
-}
+void ox_widget_set_colors(OxWidget *w, const char *fg, const char *bg);
 ```
 
-## XPM Icons
+Override per-widget colors. Pass `NULL` to use the bar's default colors.
+
+- `fg` — foreground color (hex, e.g., `"#ff0000"`)
+- `bg` — background color (hex, or `NULL` for transparent)
+
+### ox_widget_set_render_progress
 
 ```c
-ox_draw_xpm(win, x, y, "path/to/icon.xpm");
+void ox_widget_set_render_progress(OxWidget *w, int enable);
 ```
 
-## OSD (On-Screen Display)
+Enable progress bar rendering. When enabled, the widget's label is interpreted as a percentage (0-100) and rendered as a filled bar.
+
+### ox_widget_update
 
 ```c
-/* create hidden window */
-OxWindow *osd = ox_window_new(x, y, 30, 200);
-ox_window_set_bg(osd, "#111111");
-
-/* show on signal */
-signal(SIGUSR1, handler);
-
-/* in signal handler */
-if (show_osd) {
-    ox_window_show(osd);
-    /* auto-hide after timeout */
-}
+void ox_widget_update(OxWidget *w);
 ```
 
-## EWMH Struts
+Manually trigger the update callback. Normally called by the event loop based on interval.
 
-Reserve screen space for your bar:
+### ox_widget_do_click
 
 ```c
-ox_window_set_strut(win, 28, 0, 0, 0);  /* 28px at top */
+void ox_widget_do_click(OxWidget *w);
 ```
+
+Invoke the widget's click callback programmatically.
+
+### ox_widget_get_name
+
+```c
+const char *ox_widget_get_name(OxWidget *w);
+```
+
+Get the widget's name.
+
+### ox_widget_get_label
+
+```c
+const char *ox_widget_get_label(OxWidget *w);
+```
+
+Get the widget's current label text (output of the last update callback).
+
+### ox_widget_get_icon
+
+```c
+const char *ox_widget_get_icon(OxWidget *w);
+```
+
+Get the widget's icon string.
+
+### ox_widget_get_fg
+
+```c
+const char *ox_widget_get_fg(OxWidget *w);
+```
+
+Get the widget's foreground color override, or `NULL` if using bar default.
+
+### ox_widget_get_bg
+
+```c
+const char *ox_widget_get_bg(OxWidget *w);
+```
+
+Get the widget's background color override, or `NULL` if using bar default.
+
+### ox_widget_get_interval
+
+```c
+double ox_widget_get_interval(OxWidget *w);
+```
+
+Get the widget's update interval in seconds.
+
+### ox_widget_get_last_update
+
+```c
+double ox_widget_get_last_update(OxWidget *w);
+```
+
+Get the timestamp of the last update (monotonic clock, seconds).
+
+### ox_widget_set_last_update
+
+```c
+void ox_widget_set_last_update(OxWidget *w, double t);
+```
+
+Set the last update timestamp. Used by the event loop to track when to call the update callback.
+
+---
+
+### ox_window_new
+
+```c
+OxWindow *ox_window_new(int x, int y, int w, int h);
+```
+
+Create a new X11 window. Sets override_redirect (bypasses WM), sets `_NET_WM_WINDOW_TYPE_DOCK`, and prepares an Xft drawing context.
+
+- `x, y` — screen position (pixels)
+- `w, h` — window dimensions (pixels)
+
+Returns a newly allocated window. Free with `ox_window_destroy()`.
+
+### ox_window_destroy
+
+```c
+void ox_window_destroy(OxWindow *win);
+```
+
+Free a window and its resources.
+
+### ox_window_set_bg
+
+```c
+void ox_window_set_bg(OxWindow *win, const char *color);
+```
+
+Set the background color. Stored for use by `ox_draw_rect()`.
+
+- `color` — hex color string (e.g., `"#000000"`)
+
+### ox_window_set_font
+
+```c
+void ox_window_set_font(OxWindow *win, const char *font);
+```
+
+Set the Xft font. Affects all subsequent `ox_draw_text()` calls on this window.
+
+- `font` — Xft font name (e.g., `"monospace:size=11"`)
+
+### ox_window_set_click
+
+```c
+void ox_window_set_click(OxWindow *win, OxWindowClick click);
+```
+
+Set a click handler for the entire window.
+
+- `click` — function signature: `void (*)(OxWindow *win, int x, int y, int button)`
+
+### ox_window_set_strut
+
+```c
+void ox_window_set_strut(OxWindow *win, int top, int bottom, int left, int right);
+```
+
+Set EWMH struts to reserve screen space. Prevents maximized windows from overlapping your bar.
+
+- `top` — pixels to reserve at top (e.g., bar height)
+
+### ox_window_show
+
+```c
+void ox_window_show(OxWindow *win);
+```
+
+Map (show) the window.
+
+### ox_window_hide
+
+```c
+void ox_window_hide(OxWindow *win);
+```
+
+Unmap (hide) the window.
+
+### ox_window_move
+
+```c
+void ox_window_move(OxWindow *win, int x, int y);
+```
+
+Move the window to a new position.
+
+### ox_window_resize
+
+```c
+void ox_window_resize(OxWindow *win, int w, int h);
+```
+
+Resize the window.
+
+### ox_window_handle
+
+```c
+Window ox_window_handle(OxWindow *win);
+```
+
+Get the underlying X11 `Window` handle. Used for matching `XEvent.xbutton.window` in click handlers.
+
+---
+
+### ox_draw_rect
+
+```c
+void ox_draw_rect(OxWindow *win, int x, int y, int w, int h, const char *color);
+```
+
+Draw a filled rectangle.
+
+- `color` — hex color string (e.g., `"#000000"`)
+
+### ox_draw_text
+
+```c
+void ox_draw_text(OxWindow *win, int x, int y, const char *text, const char *fg);
+```
+
+Draw text using the window's current font.
+
+- `text` — UTF-8 string
+- `fg` — foreground color (hex)
+
+### ox_draw_xpm
+
+```c
+void ox_draw_xpm(OxWindow *win, int x, int y, const char *path);
+```
+
+Draw an XPM image.
+
+- `path` — filesystem path to `.xpm` file
+
+### ox_draw_sep
+
+```c
+void ox_draw_sep(OxWindow *win, int x, int y, const char *sep, const char *fg);
+```
+
+Draw a separator string (same as `ox_draw_text`, semantic alias).
+
+### ox_draw_flush
+
+```c
+void ox_draw_flush(OxWindow *win);
+```
+
+Flush pending X11 drawing commands.
+
+### ox_text_width
+
+```c
+int ox_text_width(OxWindow *win, const char *text);
+```
+
+Measure the pixel width of a text string using the window's current font.
+
+---
 
 ## Signals
 
-```c
-SIGHUP   — quit (via ox_quit)
-SIGUSR1  — custom (e.g., show volume OSD)
-SIGUSR2  — custom (e.g., show brightness OSD)
-SIGINT   — quit
-SIGTERM  — quit
-```
+| Signal | Action |
+|--------|--------|
+| `SIGINT` | Quit |
+| `SIGTERM` | Quit |
+| `SIGHUP` | Quit |
+| `SIGUSR1` | Custom (e.g., show volume OSD) |
+| `SIGUSR2` | Custom (e.g., show brightness OSD) |
 
 ## License
 
