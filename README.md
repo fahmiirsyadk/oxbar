@@ -413,44 +413,7 @@ ________________________________________________________________________________
     };
 
 
-[08] Code Style
-________________________________________________________________________________
-
-  Formatting:
-    - 4-space indentation (no tabs)
-    - Opening brace on same line for functions and control flow
-    - Single blank line between functions
-    - No trailing whitespace
-
-  Naming:
-    - ox_ prefix for all public API functions
-    - snake_case for functions and variables
-    - UPPER_CASE for #define constants
-    - OxPascalCase for types (OxWidget, OxWindow, OxMain)
-    - g_ prefix for file-scope globals (g_dpy, g_screen)
-
-  Callbacks:
-    - Always check for NULL before invoking
-    - Pass user context as first parameter
-    - Return type void for all callbacks
-
-  Memory:
-    - strdup() for owned strings, free() in destroy functions
-    - calloc() for struct allocation
-    - No hidden allocations in draw functions
-
-  Error handling:
-    - Return NULL or -1 on failure (no exceptions)
-    - Log to stderr for critical errors (perror, fprintf)
-    - Graceful degradation (show "??%" instead of crashing)
-
-  Headers:
-    - _POSIX_C_SOURCE 200809L for getline, clock_gettime, etc.
-    - _GNU_SOURCE for strcasestr (search example only)
-    - Include ox.h last among local headers
-
-
-[09] Extending
+[08] Extending
 ________________________________________________________________________________
 
   Adding a new widget type:
