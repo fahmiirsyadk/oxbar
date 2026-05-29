@@ -1,4 +1,8 @@
 *.o
 *.d
+*.a
 build/
-oxbar
+simple-bar
+multi-bar
+vertical-bar
+osd

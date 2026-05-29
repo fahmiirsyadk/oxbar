@@ -10,34 +10,48 @@ CFLAGS += $(shell pkg-config --cflags x11 xft freetype2 fontconfig)
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 
-SRC = $(wildcard src/*.c)
-PLG = $(wildcard plugins/*.c)
-OBJ = $(SRC:src/%.c=build/%.o) $(PLG:plugins/%.c=build/%.o)
+SRC = src/widget.c src/draw.c src/loop.c
+OBJ = $(SRC:src/%.c=build/%.o)
 DEP = $(OBJ:.o=.d)
-BIN = oxbar
 
-all: $(BIN)
+EXAMPLES = simple-bar multi-bar vertical-bar osd
 
-$(BIN): $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lm
+all: $(EXAMPLES)
+
+libox.a: $(OBJ)
+	$(AR) rcs $@ $^
+
+simple-bar: examples/simple-bar.c libox.a
+	$(CC) $(CFLAGS) -o $@ $< -L. -lox $(LDFLAGS) -lm
+
+multi-bar: examples/multi-bar.c libox.a
+	$(CC) $(CFLAGS) -o $@ $< -L. -lox $(LDFLAGS) -lm
+
+vertical-bar: examples/vertical-bar.c libox.a
+	$(CC) $(CFLAGS) -o $@ $< -L. -lox $(LDFLAGS) -lm
+
+osd: examples/osd.c libox.a
+	$(CC) $(CFLAGS) -o $@ $< -L. -lox $(LDFLAGS) -lm
 
 build/%.o: src/%.c
-	@mkdir -p build
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-build/%.o: plugins/%.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 -include $(DEP)
 
 install: all
-	install -Dm755 $(BIN) $(DESTDIR)$(BINDIR)/$(BIN)
+	install -Dm755 simple-bar $(DESTDIR)$(BINDIR)/ox-simple-bar
+	install -Dm755 multi-bar $(DESTDIR)$(BINDIR)/ox-multi-bar
+	install -Dm755 vertical-bar $(DESTDIR)$(BINDIR)/ox-vertical-bar
+	install -Dm755 osd $(DESTDIR)$(BINDIR)/ox-osd
 
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/$(BIN)
+	rm -f $(DESTDIR)$(BINDIR)/ox-simple-bar
+	rm -f $(DESTDIR)$(BINDIR)/ox-multi-bar
+	rm -f $(DESTDIR)$(BINDIR)/ox-vertical-bar
+	rm -f $(DESTDIR)$(BINDIR)/ox-osd
 
 clean:
-	rm -rf build $(BIN)
+	rm -rf build libox.a $(EXAMPLES)
 
 .PHONY: all install uninstall clean

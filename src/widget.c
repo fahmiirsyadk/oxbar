@@ -1,68 +1,71 @@
 #define _POSIX_C_SOURCE 200809L
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "oxbar.h"
+#include "ox.h"
 
-Widget *widget_create(const char *name, const char *icon,
-                      double interval, WidgetUpdate update, void *ctx)
-{
-    Widget *w = calloc(1, sizeof(Widget));
-    if (!w) return NULL;
+struct OxWidget {
+    char *name;
+    char *icon;
+    char label[256];
+    char *fg;
+    char *bg;
+    int render_progress;
+    double interval;
+    OxWidgetUpdate update;
+    OxWidgetClick click;
+    void *ctx;
+    double last_update;
+};
+
+OxWidget *ox_widget_new(const char *name, double interval) {
+    OxWidget *w = calloc(1, sizeof(OxWidget));
     w->name = strdup(name);
-    w->icon = icon ? strdup(icon) : NULL;
-    w->label = calloc(256, sizeof(char));
     w->interval = interval;
-    w->update = update;
-    w->ctx = ctx;
     return w;
 }
 
-void widget_destroy(Widget *w)
-{
+void ox_widget_destroy(OxWidget *w) {
     if (!w) return;
     free(w->name);
     free(w->icon);
-    free(w->label);
-    free(w->click_cmd);
-    free(w->scroll_up);
-    free(w->scroll_down);
     free(w->fg);
     free(w->bg);
     free(w);
 }
 
-void widget_update(Widget *w)
-{
+void ox_widget_set_update(OxWidget *w, OxWidgetUpdate update, void *ctx) {
+    w->update = update;
+    w->ctx = ctx;
+}
+
+void ox_widget_set_click(OxWidget *w, OxWidgetClick click) {
+    w->click = click;
+}
+
+void ox_widget_set_icon(OxWidget *w, const char *icon) {
+    free(w->icon);
+    w->icon = icon ? strdup(icon) : NULL;
+}
+
+void ox_widget_set_colors(OxWidget *w, const char *fg, const char *bg) {
+    free(w->fg);
+    free(w->bg);
+    w->fg = fg ? strdup(fg) : NULL;
+    w->bg = bg ? strdup(bg) : NULL;
+}
+
+void ox_widget_set_render_progress(OxWidget *w, int enable) {
+    w->render_progress = enable;
+}
+
+void ox_widget_update(OxWidget *w) {
     if (w->update)
-        w->update(w->ctx, w->label, 256);
+        w->update(w->ctx, w->label, sizeof(w->label));
 }
 
-void run_cmd(const char *cmd, char *buf, size_t len)
-{
-    if (!cmd || !*cmd) { buf[0] = '\0'; return; }
-    FILE *f = popen(cmd, "r");
-    if (!f) { buf[0] = '\0'; return; }
-    if (fgets(buf, len, f)) {
-        size_t n = strlen(buf);
-        while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == '\r'))
-            buf[--n] = '\0';
-    } else {
-        buf[0] = '\0';
-    }
-    pclose(f);
-}
-
-void update_cmd(void *ctx, char *buf, size_t len)
-{
-    const char *cmd = (const char *)ctx;
-    if (cmd) run_cmd(cmd, buf, len);
-    else buf[0] = '\0';
-}
-
-Widget *widget_cmd_create(const char *name, const char *icon,
-                          const char *cmd, double interval)
-{
-    return widget_create(name, icon, interval, update_cmd,
-        cmd ? strdup(cmd) : NULL);
-}
+const char *ox_widget_get_name(OxWidget *w) { return w->name; }
+const char *ox_widget_get_label(OxWidget *w) { return w->label; }
+const char *ox_widget_get_icon(OxWidget *w) { return w->icon; }
+double ox_widget_get_interval(OxWidget *w) { return w->interval; }
+double ox_widget_get_last_update(OxWidget *w) { return w->last_update; }
+void ox_widget_set_last_update(OxWidget *w, double t) { w->last_update = t; }
