@@ -1,7 +1,6 @@
 # ox
 
-A minimal C toolkit for building X11 status bars and widgets.
-No config files. Write C, not config.
+A minimal C toolkit for building X11 status bars and widgets
 
 
 ## [00] Quick Start
