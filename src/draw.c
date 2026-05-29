@@ -5,6 +5,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xft/Xft.h>
+#include <X11/xpm.h>
 #include "ox.h"
 
 struct OxWindow {
@@ -56,19 +57,16 @@ OxWindow *ox_window_new(int x, int y, int w, int h) {
     win->draw = XftDrawCreate(g_dpy, win->win,
         DefaultVisual(g_dpy, g_screen), DefaultColormap(g_dpy, g_screen));
 
-    /* bypass wm */
     XSetWindowAttributes sa;
     sa.override_redirect = True;
     XChangeWindowAttributes(g_dpy, win->win, CWOverrideRedirect, &sa);
 
-    /* dock type */
     Atom type = XInternAtom(g_dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
     XChangeProperty(g_dpy, win->win,
         XInternAtom(g_dpy, "_NET_WM_WINDOW_TYPE", False),
         XA_ATOM, 32, PropModeReplace, (unsigned char *)&type, 1);
 
     XSelectInput(g_dpy, win->win, ButtonPressMask);
-    XClearWindow(g_dpy, win->win);
     return win;
 }
 
@@ -85,8 +83,6 @@ void ox_window_destroy(OxWindow *win) {
 void ox_window_set_bg(OxWindow *win, const char *color) {
     free(win->bg);
     win->bg = strdup(color);
-    XSetWindowBackground(win->dpy, win->win, parse_hex(color));
-    XClearWindow(win->dpy, win->win);
 }
 
 void ox_window_set_font(OxWindow *win, const char *font) {
@@ -109,34 +105,22 @@ void ox_window_hide(OxWindow *win) {
 }
 
 void ox_window_move(OxWindow *win, int x, int y) {
-    win->x = x;
-    win->y = y;
+    win->x = x; win->y = y;
     XMoveWindow(win->dpy, win->win, x, y);
 }
 
 void ox_window_resize(OxWindow *win, int w, int h) {
-    win->width = w;
-    win->height = h;
+    win->width = w; win->height = h;
     XResizeWindow(win->dpy, win->win, w, h);
 }
 
 void ox_window_set_strut(OxWindow *win, int top, int bottom, int left, int right) {
-    unsigned long strut[12] = {0};
-    strut[0] = left;
-    strut[1] = right;
-    strut[2] = top;
-    strut[3] = bottom;
-    strut[4] = 0;
-    strut[5] = 0;
-    strut[6] = 0;
-    strut[7] = 0;
-    strut[8] = win->x;
-    strut[9] = win->x + win->width - 1;
-    strut[10] = 0;
-    strut[11] = 0;
+    unsigned long s[12] = {0};
+    s[0] = left; s[1] = right; s[2] = top; s[3] = bottom;
+    s[8] = win->x; s[9] = win->x + win->width - 1;
     XChangeProperty(win->dpy, win->win,
         XInternAtom(win->dpy, "_NET_WM_STRUT_PARTIAL", False),
-        XA_CARDINAL, 32, PropModeReplace, (unsigned char *)strut, 12);
+        XA_CARDINAL, 32, PropModeReplace, (unsigned char *)s, 12);
 }
 
 void ox_draw_rect(OxWindow *win, int x, int y, int w, int h, const char *color) {
@@ -150,9 +134,7 @@ void ox_draw_text(OxWindow *win, int x, int y, const char *text, const char *fg)
     if (fg && fg[0] == '#') {
         unsigned int r = 0, g = 0, b = 0;
         sscanf(fg + 1, "%02x%02x%02x", &r, &g, &b);
-        rc.red = r * 0x0101;
-        rc.green = g * 0x0101;
-        rc.blue = b * 0x0101;
+        rc.red = r * 0x0101; rc.green = g * 0x0101; rc.blue = b * 0x0101;
         rc.alpha = 0xffff;
     }
     XftColor color;
@@ -167,11 +149,24 @@ void ox_draw_text(OxWindow *win, int x, int y, const char *text, const char *fg)
 int ox_text_width(OxWindow *win, const char *text) {
     if (!text || !*text) return 0;
     XGlyphInfo ext;
-    XftTextExtentsUtf8(win->dpy, win->font, (const FcChar8 *)text,
-        strlen(text), &ext);
+    XftTextExtentsUtf8(win->dpy, win->font, (const FcChar8 *)text, strlen(text), &ext);
     return ext.xOff;
 }
 
 void ox_draw_sep(OxWindow *win, int x, int y, const char *sep, const char *fg) {
     ox_draw_text(win, x, y, sep, fg);
 }
+
+void ox_draw_xpm(OxWindow *win, int x, int y, const char *path) {
+    XpmAttributes attr = {0};
+    Pixmap pix, mask;
+    if (XpmReadFileToPixmap(win->dpy, RootWindow(win->dpy, win->screen),
+            path, &pix, &mask, &attr) == XpmSuccess) {
+        XCopyArea(win->dpy, pix, win->win, win->gc, 0, 0, attr.width, attr.height, x, y);
+        if (mask) XFreePixmap(win->dpy, mask);
+        XFreePixmap(win->dpy, pix);
+    }
+}
+
+Window ox_window_handle(OxWindow *win) { return win->win; }
+void ox_draw_flush(OxWindow *win) { XFlush(win->dpy); }

@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "ox.h"
 
 struct OxWidget {
@@ -42,9 +43,20 @@ void ox_widget_set_click(OxWidget *w, OxWidgetClick click) {
     w->click = click;
 }
 
+void ox_widget_do_click(OxWidget *w) {
+    if (w && w->click) w->click(w->ctx);
+}
+
 void ox_widget_set_icon(OxWidget *w, const char *icon) {
     free(w->icon);
     w->icon = icon ? strdup(icon) : NULL;
+}
+
+void ox_widget_set_label_text(OxWidget *w, const char *text) {
+    if (text)
+        snprintf(w->label, sizeof(w->label), "%s", text);
+    else
+        w->label[0] = '\0';
 }
 
 void ox_widget_set_colors(OxWidget *w, const char *fg, const char *bg) {
@@ -69,3 +81,5 @@ const char *ox_widget_get_icon(OxWidget *w) { return w->icon; }
 double ox_widget_get_interval(OxWidget *w) { return w->interval; }
 double ox_widget_get_last_update(OxWidget *w) { return w->last_update; }
 void ox_widget_set_last_update(OxWidget *w, double t) { w->last_update = t; }
+const char *ox_widget_get_fg(OxWidget *w) { return w->fg; }
+const char *ox_widget_get_bg(OxWidget *w) { return w->bg; }
