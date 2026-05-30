@@ -39,9 +39,12 @@ typedef struct {
     int current_desktop;
     int needs_redraw;
     double last_wsp_check;
+    double last_wsp_click;
     char exe_dir[PATH_MAX];
     char bat_path[PATH_MAX];
 } XMBState;
+
+static XMBState *g_xmobar = NULL;
 
 static void run_cmd(const char *cmd) {
     pid_t pid = fork();
@@ -122,9 +125,7 @@ static int get_current_desktop(void) {
 static void bar_add(Bar *b, OxWidget *w) { b->widgets[b->count++] = w; }
 
 static void wsp_update(void *ctx, char *buf, size_t len) {
-    (void)ctx;
-    int d = get_current_desktop();
-    snprintf(buf, len, "%d", d + 1);
+    snprintf(buf, len, "%d", (int)(long)ctx + 1);
 }
 
 static void vol_update(void *ctx, char *buf, size_t len) {
@@ -176,11 +177,11 @@ static void clock_update(void *ctx, char *buf, size_t len) {
     strftime(buf, len, "%H:%M", t);
 }
 
-static void wsp_click_0(void *ctx) { XMBState *s = ctx; s->current_desktop = 0; s->needs_redraw = 1; run_cmd("xdotool key super+1"); }
-static void wsp_click_1(void *ctx) { XMBState *s = ctx; s->current_desktop = 1; s->needs_redraw = 1; run_cmd("xdotool key super+2"); }
-static void wsp_click_2(void *ctx) { XMBState *s = ctx; s->current_desktop = 2; s->needs_redraw = 1; run_cmd("xdotool key super+3"); }
-static void wsp_click_3(void *ctx) { XMBState *s = ctx; s->current_desktop = 3; s->needs_redraw = 1; run_cmd("xdotool key super+4"); }
-static void wsp_click_4(void *ctx) { XMBState *s = ctx; s->current_desktop = 4; s->needs_redraw = 1; run_cmd("xdotool key super+5"); }
+static void wsp_click_0(void *ctx) { (void)ctx; XMBState *s = g_xmobar; s->current_desktop = 0; s->needs_redraw = 1; struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); s->last_wsp_click = ts.tv_sec + ts.tv_nsec / 1e9; run_cmd("xdotool key super+1"); }
+static void wsp_click_1(void *ctx) { (void)ctx; XMBState *s = g_xmobar; s->current_desktop = 1; s->needs_redraw = 1; struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); s->last_wsp_click = ts.tv_sec + ts.tv_nsec / 1e9; run_cmd("xdotool key super+2"); }
+static void wsp_click_2(void *ctx) { (void)ctx; XMBState *s = g_xmobar; s->current_desktop = 2; s->needs_redraw = 1; struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); s->last_wsp_click = ts.tv_sec + ts.tv_nsec / 1e9; run_cmd("xdotool key super+3"); }
+static void wsp_click_3(void *ctx) { (void)ctx; XMBState *s = g_xmobar; s->current_desktop = 3; s->needs_redraw = 1; struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); s->last_wsp_click = ts.tv_sec + ts.tv_nsec / 1e9; run_cmd("xdotool key super+4"); }
+static void wsp_click_4(void *ctx) { (void)ctx; XMBState *s = g_xmobar; s->current_desktop = 4; s->needs_redraw = 1; struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); s->last_wsp_click = ts.tv_sec + ts.tv_nsec / 1e9; run_cmd("xdotool key super+5"); }
 
 static OxWidgetClick wsp_click_fns[NWSP] = {
     wsp_click_0, wsp_click_1, wsp_click_2, wsp_click_3, wsp_click_4
@@ -245,8 +246,8 @@ static int bar_hit_test(Bar *b, int x) {
 static void on_timeout(OxMain *m, double now) {
     XMBState *s = m->ctx;
 
-    /* slow poll: sync workspace from keyboard */
-    if (now - s->last_wsp_check > 1.0) {
+    /* slow poll: sync workspace from keyboard (skip right after click) */
+    if (now - s->last_wsp_check > 1.0 && now - s->last_wsp_click > 1.5) {
         s->last_wsp_check = now;
         int cd = get_current_desktop();
         if (cd != s->current_desktop) {
@@ -327,6 +328,7 @@ static void on_event(OxMain *m, XEvent *ev) {
 int main(void) {
     XMBState state = {0};
     XMBState *s = &state;
+    g_xmobar = s;
 
     resolve_exe_dir(s);
     detect_battery(s);
@@ -346,7 +348,7 @@ int main(void) {
     s->center = (Bar){ .height = h, .padding = pad, .fg = C_DIM, .bg = C_BG, .sep = C_SEP };
     for (int i = 0; i < NWSP; i++) {
         OxWidget *w = ox_widget_new("wsp", 0.2);
-        ox_widget_set_update(w, wsp_update, s);
+        ox_widget_set_update(w, wsp_update, (void *)(long)i);
         ox_widget_set_click(w, wsp_click_fns[i]);
         bar_add(&s->center, w);
     }
